@@ -132,7 +132,7 @@ To generate analysis report for each weekday, I firstly grab the sub-data set by
 data <- ONP_raw %>% filter( weekday_is_monday == 1) %>% 
   select(-url, -timedelta, -weekday_is_monday, 
          -weekday_is_tuesday, -weekday_is_wednesday, -weekday_is_thursday, 
-         -weekday_is_friday, -weekday_is_saturday, -weekday_is_sunday)
+         -weekday_is_friday, -weekday_is_saturday, -weekday_is_sunday, -is_weekend)
 
 #Set seed for reproducible.
 set.seed(1)
@@ -158,8 +158,21 @@ Using `summary()` function, look at some basic statistic information on each var
 summary(dataTrain)
 ```
 
+Notice shares variable has a very large range, plot it to check.  
+```{r shares, echo=TRUE}
+histogram(dataTrain$shares)
+```
+
+It is right skewed. Use log to make it more normal distributed.  
+
+```{r logshare, echo=TRUE}
+dataTrain <- dataTrain %>% mutate(log_shares = log(shares))
+histogram(dataTrain$log_shares)
+```
+The `log(shares)` is better normally distributed, will use it for model fit and predict.  
+
 The following correlation plot shows the correlation among keywords features, natural language processing features and shares. Blue color indicates positive correlated, red color indicates negative correlated, size of dots represents how strong are two variables correlated.  
-```{r corr, echo=TRUE}
+```{r corr, echo=TRUE, message=FALSE}
 library(corrplot)
 #Create the correlation sub data set.
 data_cor <- dataTrain %>% select(kw_min_min, kw_max_min, kw_avg_min, 
@@ -190,3 +203,99 @@ g2 + geom_point(aes(fill = channel, colour = channel),position = "jitter") + ggt
 
 ```
 
+
+# Modeling  
+
+## Random Forests
+```{r RF, echo=TRUE}
+#Subset a smaller dataTrain dataset for fitting.
+
+dataTrain <- dataTrain[1:300,]
+
+#remove the shares column, use log_shares to train and predict
+dataTrain <- dataTrain %>% select(-shares)
+#setup the control
+trctrl <- trainControl(method = "repeatedcv", number = 3, repeats = 1)
+#Fit a RF tree
+rf_fit<- train(log_shares ~ ., data=dataTrain, 
+                method = "rf", trControl = trctrl, 
+                preProcess = c("center", "scale"), tuneLength=3)
+#check the fit
+rf_fit
+#plot the fit
+plot(rf_fit)
+#plot the model
+plot(rf_fit$finalModel)
+
+#predict() using the titanicDataTest dataset
+rf_pred <- predict(rf_fit, newdata = dataTest)
+#Use exp to convert the log value back.
+rf_pred_e <- exp(rf_pred)
+
+#Use ifelse to convert shares variable into 0 ( < 1400) or 1 ( >=1400)
+#Turn them into factor.
+#Use confusionMatrix function to compare the accuracy.
+rf_match <- confusionMatrix(as.factor(ifelse(rf_pred_e < 1400, 0, 1)), as.factor(ifelse(dataTest$shares < 1400, 0, 1)))
+#Calculate miss rate
+rf_miss <- unname(1-rf_match[[3]][1])
+#Call miss rate
+rf_miss
+```
+
+## Linear regression model  
+
+Create following linear regression models:  
+```{r linear, echo=TRUE}
+lin_fit1 <- lm(log_shares ~ ., data = dataTrain)
+lin_fit2 <- lm(log_shares ~ kw_min_min + kw_max_min + kw_avg_min + 
+                 kw_min_max + kw_max_max + kw_avg_max + kw_min_avg + 
+                 kw_max_avg + kw_avg_avg, data = dataTrain)
+lin_fit3 <- lm(log_shares ~ kw_min_min + kw_max_min + kw_avg_min + 
+                 kw_min_max + kw_max_max + kw_avg_max + kw_min_avg + 
+                 kw_max_avg + kw_avg_avg + LDA_00 + LDA_01 + LDA_02 + 
+                 LDA_03 + LDA_04, data = dataTrain)
+
+```
+
+Use [Dr. Post's](https://www4.stat.ncsu.edu/~post/) function for Adj R Square, AIC, AICc, BIC comparsion.   
+```{r compareFitStats, echo=TRUE, message=FALSE}
+compareFitStats <- function(fit1, fit2, fit3){
+	require(MuMIn)
+	fitStats <- data.frame(fitStat = c("Adj R Square", "AIC", "AICc", "BIC"),
+	    col1 = round(c(summary(fit1)$adj.r.squared, AIC(fit1), 
+									MuMIn::AICc(fit1), BIC(fit1)), 3),
+	    col2 = round(c(summary(fit2)$adj.r.squared, AIC(fit2), 
+									MuMIn::AICc(fit2), BIC(fit2)), 3),
+			col3 = round(c(summary(fit3)$adj.r.squared, AIC(fit3), 
+									MuMIn::AICc(fit3), BIC(fit3)), 3))
+	#put names on returned df
+	calls <- as.list(match.call())
+	calls[[1]] <- NULL
+	names(fitStats)[2:4] <- unlist(calls)
+	fitStats
+}
+
+compareFitStats(lin_fit1, lin_fit2, lin_fit3)
+```
+
+This function can calculate the Adj R Square, AIC, AICc, BIC statistics for each fit, and export a table to easy compare. Typically, we will prefer the fits which has larger Adj R Square, and smaller AIC, AICc AND BIC.  
+
+Will choose lin_fit3 to do the prediction.  
+
+```{r linear pred, echo=TRUE, message=FALSE, warning=FALSE}
+lin_pred <- predict(lin_fit3, newdata = dataTest)
+lin_pred_e <- exp(lin_pred)
+lin_match <- confusionMatrix(as.factor(ifelse(lin_pred_e < 1400, 0, 1)), as.factor(ifelse(dataTest$shares < 1400, 0, 1)))
+#Calculate miss rate
+lin_miss <- unname(1-lin_match[[3]][1])
+#Call miss rate
+lin_miss
+```
+
+## Compare model  
+
+```{r compare, echo=TRUE}
+table(rf_miss, lin_miss)
+```
+
+The lower missaccuracy rate is `r min(rf_miss, lin_miss)`
