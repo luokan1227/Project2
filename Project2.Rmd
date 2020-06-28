@@ -25,10 +25,13 @@ ONP_raw <-  read_csv("OnlineNewsPopularity.csv")
 
 The data set [**Online News Popularity**](https://archive.ics.uci.edu/ml/datasets/Online+News+Popularity) inlcudes the features of articles published by [Mashable](www.mashable.com) in two years. There are `r nrow(ONP_raw)` observations and `r ncol(ONP_raw)` variables in the dataset, without any missing values.  
 
-There are  
+
+There are:  
+
  * 2 non-predictive variable: `r names(ONP_raw)[1:2]`  
  * 1 goal variable: `r names(ONP_raw)[length(ONP_raw)]`  
  * `r length(ONP_raw)-3` variables used to predict the goal variable.  
+
 
 Following are the attributes of all variables provided by the original website:  
 
@@ -94,9 +97,12 @@ Following are the attributes of all variables provided by the original website:
 `59. abs_title_sentiment_polarity: Absolute polarity level`  
 `60. shares: Number of shares (target)`  
 
+
 The details about the estimated relative performance values can be found in the [article by K. Fernandes, P. Vinagre and P. Cortez](https://www.researchgate.net/publication/283510525_A_Proactive_Intelligent_Decision_Support_System_for_Predicting_the_Popularity_of_Online_News). The original contents can be found by the address in the `url` variable.  
 
+
 Data sources provided by:  
+
  * Kelwin Fernandes (kafc @ inesctec.pt, kelwinfc @ gmail.com) - INESC TEC, Porto, Portugal/Universidade do Porto, Portugal.  
  * Pedro Vinagre (pedro.vinagre.sousa @ gmail.com) - ALGORITMI Research Centre, Universidade do Minho, Portugal  
  * Paulo Cortez - ALGORITMI Research Centre, Universidade do Minho, Portugal
@@ -109,6 +115,7 @@ The goal is creating models to predict the `shares` variable from the data set w
 ## Method will use  
 
 The method of prediction is using R to create two models based on training data set:  
+
  * Linear regression model: multiple linear regression.  
  * Non-linear model: random forests method.  
 After validating the two models on the training data set, will use the model to predict the `shares` variable on test data set, and compare the misclassification rate.  
@@ -122,7 +129,10 @@ To generate analysis report for each weekday, I firstly grab the sub-data set by
 #ONP_weekday <- ONP_raw %>% mutate( "weekday_is_*" = ifelse(weekday_is_monday == 1, 1, ifelse(weekday_is_tuesday ==1, 2, ifelse(weekday_is_wednesday ==1, 3, ifelse(weekday_is_thursday ==1, 4, ifelse(weekday_is_friday ==1, 5, ifelse(weekday_is_saturday ==1, 6, ifelse(weekday_is_sunday ==1, 7, 8))))))))
 
 #Select Monday data, discard weekday_is_* variables.
-data <- ONP_raw %>% filter( weekday_is_monday == 1) %>% select(-url, -timedelta, -weekday_is_monday, -weekday_is_tuesday, -weekday_is_wednesday, -weekday_is_thursday, -weekday_is_friday, -weekday_is_saturday, -weekday_is_sunday)
+data <- ONP_raw %>% filter( weekday_is_monday == 1) %>% 
+  select(-url, -timedelta, -weekday_is_monday, 
+         -weekday_is_tuesday, -weekday_is_wednesday, -weekday_is_thursday, 
+         -weekday_is_friday, -weekday_is_saturday, -weekday_is_sunday)
 
 #Set seed for reproducible.
 set.seed(1)
@@ -138,11 +148,45 @@ dataTest <- data[test, ]
 ```
 
 This sub-data set contains `r nrow(data)` observations and `r ncol(data)` variables.  
-According to `Fernandes`'s article, for random tree method, `keyword` based features are most important for predicting `shares`. It is make sence that keywords can grab reader's attention and interests quickly. The natural language processing features (LDA topics) and previous shares of Mashable linksare also very important. Some other features such as words also have relative high ranking in RF model importance. I will involve all the available predictive variables in my model.  
+According to `Fernandes`'s article, for random tree method, `keyword` based features are most important for predicting `shares`. It is make sence that keywords can grab reader's attention and interests quickly. The natural language processing features (LDA topics) and previous shares of Mashable linksare also very important. Some other features such as words also have relative high ranking in RF model importance. I will involve all the available predictive variables in both my linear and non-linear models.  
 
 # Summarizations  
 
-```{r}
+Using `summary()` function, look at some basic statistic information on each variabl, get an idea about min, max, mean, 1st/2nd/3rd quantiles.  
+
+```{r summary, echo=TRUE}
+summary(dataTrain)
+```
+
+The following correlation plot shows the correlation among keywords features, natural language processing features and shares. Blue color indicates positive correlated, red color indicates negative correlated, size of dots represents how strong are two variables correlated.  
+```{r corr, echo=TRUE}
+library(corrplot)
+#Create the correlation sub data set.
+data_cor <- dataTrain %>% select(kw_min_min, kw_max_min, kw_avg_min, 
+                                 kw_min_max, kw_max_max, kw_avg_max, 
+                                 kw_min_avg, kw_max_avg, kw_avg_avg, 
+                                 LDA_00, LDA_01, LDA_02, LDA_03, LDA_04, 
+                                 shares)
+#calculate correlation and plot.
+Correlation <- cor(data_cor, method = "spearman")
+corrplot(Correlation, type = "upper", tl.pos = "lt")
+corrplot(Correlation, type = "lower", method = "number", tl.pos = "n", add = TRUE, diag = FALSE, number.cex = 0.5)
+
+```
+
+
+We can also take a look at the channel feature variables and the number of shares by channel.  
+The count histogram plot of channels shows the number of articles published by each channel on selected weekdays.  
+The point plot shows the shares number of articles under each channel. 
+```{r channel_sub, echo=TRUE}
+#Create new variable channel, and make a sub data set contains channel info and shares.
+channel_sub <- dataTrain %>% mutate( channel = ifelse(data_channel_is_lifestyle == 1, "lifestyle", ifelse(data_channel_is_entertainment ==1, "entertainment", ifelse(data_channel_is_bus ==1, "bus", ifelse(data_channel_is_socmed ==1, "socmed", ifelse(data_channel_is_tech ==1, "tech", ifelse(data_channel_is_world ==1, "world", "NA"))))))) %>% select(channel, shares)
+#Make plot on counts of each channel numbers
+g1 <- ggplot(channel_sub, aes(x = channel))
+g1 + stat_count() + ggtitle("Number of articles on each channel")
+#Make plot on shares values by channels.
+g2 <- ggplot(channel_sub, aes(x = channel, y=shares))
+g2 + geom_point(aes(fill = channel, colour = channel),position = "jitter") + ggtitle("Shares by Channels")
 
 ```
 
