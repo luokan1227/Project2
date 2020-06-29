@@ -2,7 +2,10 @@
 title: "Project2"
 author: "Kan Luo"
 date: "6/27/2020"
-output: pdf_document
+output: rmarkdown::github_document
+params: 
+      weekday: "monday"
+
 ---
 
 ```{r setup, include=FALSE}
@@ -12,6 +15,7 @@ library(readr)
 library(tidyverse)
 library(GGally)
 library(caret)
+library(rmarkdown)
 ```
 
 # Introduction section  
@@ -21,6 +25,7 @@ library(caret)
 Read in data set.
 ```{r read in data, echo=TRUE, message=FALSE}
 ONP_raw <-  read_csv("OnlineNewsPopularity.csv")
+params$weekday
 ```
 
 The data set [**Online News Popularity**](https://archive.ics.uci.edu/ml/datasets/Online+News+Popularity) inlcudes the features of articles published by [Mashable](www.mashable.com) in two years. There are `r nrow(ONP_raw)` observations and `r ncol(ONP_raw)` variables in the dataset, without any missing values.  
@@ -129,7 +134,7 @@ To generate analysis report for each weekday, I firstly grab the sub-data set by
 #ONP_weekday <- ONP_raw %>% mutate( "weekday_is_*" = ifelse(weekday_is_monday == 1, 1, ifelse(weekday_is_tuesday ==1, 2, ifelse(weekday_is_wednesday ==1, 3, ifelse(weekday_is_thursday ==1, 4, ifelse(weekday_is_friday ==1, 5, ifelse(weekday_is_saturday ==1, 6, ifelse(weekday_is_sunday ==1, 7, 8))))))))
 
 #Select Monday data, discard weekday_is_* variables.
-data <- ONP_raw %>% filter( weekday_is_monday == 1) %>% 
+data <- ONP_raw %>% filter( ONP_raw[paste0("weekday_is_", params$weekday)] == 1) %>% 
   select(-url, -timedelta, -weekday_is_monday, 
          -weekday_is_tuesday, -weekday_is_wednesday, -weekday_is_thursday, 
          -weekday_is_friday, -weekday_is_saturday, -weekday_is_sunday, -is_weekend)
