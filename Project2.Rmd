@@ -18,9 +18,11 @@ library(caret)
 library(rmarkdown)
 ```
 
-# Introduction section  
+# `r paste(toupper(params$weekday),"ANALYSIS")`
 
-## Data background  
+## Introduction section  
+
+### Data background  
 
 Read in data set.
 ```{r read in data, echo=TRUE, message=FALSE}
@@ -113,26 +115,24 @@ Data sources provided by:
  * Paulo Cortez - ALGORITMI Research Centre, Universidade do Minho, Portugal
  * Pedro Sernadela - Universidade de Aveiro  
 
-## Purpose of analysis  
+### Purpose of analysis  
 
 The goal is creating models to predict the `shares` variable from the data set with any chosen weekdays (Monday, Tuesday, ect.).  
 
-## Method will use  
+### Methods to use  
 
 The method of prediction is using R to create two models based on training data set:  
 
  * Linear regression model: multiple linear regression.  
  * Non-linear model: random forests method.  
+ 
 After validating the two models on the training data set, will use the model to predict the `shares` variable on test data set, and compare the misclassification rate.  
 
-# Data  
+## Data  
 
 To generate analysis report for each weekday, I firstly grab the sub-data set by weekday_is_* variable, and discard two non-predictive variables as well as weekday_is_* variables. Based on the sub-data set, create training data set (70%) and test data set (30%).  
 
 ```{r select Monday, echo=TRUE, message=FALSE}
-#Create a weekday_is_* include weekday information. 
-#ONP_weekday <- ONP_raw %>% mutate( "weekday_is_*" = ifelse(weekday_is_monday == 1, 1, ifelse(weekday_is_tuesday ==1, 2, ifelse(weekday_is_wednesday ==1, 3, ifelse(weekday_is_thursday ==1, 4, ifelse(weekday_is_friday ==1, 5, ifelse(weekday_is_saturday ==1, 6, ifelse(weekday_is_sunday ==1, 7, 8))))))))
-
 #Select Monday data, discard weekday_is_* variables.
 data <- ONP_raw %>% filter( ONP_raw[paste0("weekday_is_", params$weekday)] == 1) %>% 
   select(-url, -timedelta, -weekday_is_monday, 
@@ -155,7 +155,7 @@ dataTest <- data[test, ]
 This sub-data set contains `r nrow(data)` observations and `r ncol(data)` variables.  
 According to `Fernandes`'s article, for random tree method, `keyword` based features are most important for predicting `shares`. It is make sence that keywords can grab reader's attention and interests quickly. The natural language processing features (LDA topics) and previous shares of Mashable linksare also very important. Some other features such as words also have relative high ranking in RF model importance. I will involve all the available predictive variables in both my linear and non-linear models.  
 
-# Summarizations  
+## Summarizations  
 
 Using `summary()` function, look at some basic statistic information on each variabl, get an idea about min, max, mean, 1st/2nd/3rd quantiles.  
 
@@ -174,9 +174,11 @@ It is right skewed. Use log to make it more normal distributed.
 dataTrain <- dataTrain %>% mutate(log_shares = log(shares))
 histogram(dataTrain$log_shares)
 ```
+
 The `log(shares)` is better normally distributed, will use it for model fit and predict.  
 
 The following correlation plot shows the correlation among keywords features, natural language processing features and shares. Blue color indicates positive correlated, red color indicates negative correlated, size of dots represents how strong are two variables correlated.  
+
 ```{r corr, echo=TRUE, message=FALSE}
 library(corrplot)
 #Create the correlation sub data set.
@@ -194,8 +196,11 @@ corrplot(Correlation, type = "lower", method = "number", tl.pos = "n", add = TRU
 
 
 We can also take a look at the channel feature variables and the number of shares by channel.  
+
 The count histogram plot of channels shows the number of articles published by each channel on selected weekdays.  
-The point plot shows the shares number of articles under each channel. 
+
+The point plot shows the shares number of articles under each channel.  
+
 ```{r channel_sub, echo=TRUE}
 #Create new variable channel, and make a sub data set contains channel info and shares.
 channel_sub <- dataTrain %>% mutate( channel = ifelse(data_channel_is_lifestyle == 1, "lifestyle", ifelse(data_channel_is_entertainment ==1, "entertainment", ifelse(data_channel_is_bus ==1, "bus", ifelse(data_channel_is_socmed ==1, "socmed", ifelse(data_channel_is_tech ==1, "tech", ifelse(data_channel_is_world ==1, "world", "NA"))))))) %>% select(channel, shares)
@@ -209,13 +214,16 @@ g2 + geom_point(aes(fill = channel, colour = channel),position = "jitter") + ggt
 ```
 
 
-# Modeling  
+## Modeling  
 
-## Random Forests
+### Random Forests  
+
+Using random Forests method to do the non-linear fit, as this method has best performance in the reference paper.  
+
 ```{r RF, echo=TRUE}
 #Subset a smaller dataTrain dataset for fitting.
-
-dataTrain <- dataTrain[1:300,]
+#common out when doing final run.
+#dataTrain <- dataTrain[1:300,]
 
 #remove the shares column, use log_shares to train and predict
 dataTrain <- dataTrain %>% select(-shares)
@@ -247,9 +255,10 @@ rf_miss <- unname(1-rf_match[[3]][1])
 rf_miss
 ```
 
-## Linear regression model  
+#@# Linear regression model  
 
-Create following linear regression models:  
+Create following linear regression models to compare:  
+
 ```{r linear, echo=TRUE}
 lin_fit1 <- lm(log_shares ~ ., data = dataTrain)
 lin_fit2 <- lm(log_shares ~ kw_min_min + kw_max_min + kw_avg_min + 
@@ -262,7 +271,9 @@ lin_fit3 <- lm(log_shares ~ kw_min_min + kw_max_min + kw_avg_min +
 
 ```
 
+
 Use [Dr. Post's](https://www4.stat.ncsu.edu/~post/) function for Adj R Square, AIC, AICc, BIC comparsion.   
+
 ```{r compareFitStats, echo=TRUE, message=FALSE}
 compareFitStats <- function(fit1, fit2, fit3){
 	require(MuMIn)
@@ -285,10 +296,10 @@ compareFitStats(lin_fit1, lin_fit2, lin_fit3)
 
 This function can calculate the Adj R Square, AIC, AICc, BIC statistics for each fit, and export a table to easy compare. Typically, we will prefer the fits which has larger Adj R Square, and smaller AIC, AICc AND BIC.  
 
-Will choose lin_fit3 to do the prediction.  
+In genweal, lin_fit1 has higher Adj R Square values, will choose lin_fit1 to do the prediction.  
 
 ```{r linear pred, echo=TRUE, message=FALSE, warning=FALSE}
-lin_pred <- predict(lin_fit3, newdata = dataTest)
+lin_pred <- predict(lin_fit1, newdata = dataTest)
 lin_pred_e <- exp(lin_pred)
 lin_match <- confusionMatrix(as.factor(ifelse(lin_pred_e < 1400, 0, 1)), as.factor(ifelse(dataTest$shares < 1400, 0, 1)))
 #Calculate miss rate
@@ -297,7 +308,9 @@ lin_miss <- unname(1-lin_match[[3]][1])
 lin_miss
 ```
 
-## Compare model  
+### Compare model  
+
+Put two miss-rates from two models together to compare  
 
 ```{r compare, echo=TRUE}
 table(rf_miss, lin_miss)
