@@ -1,4 +1,4 @@
-# Project2
+# ST558 Project2
 ## Kan Luo  
 
 The analysis for [Monday is available here](mondayAnalysis.md).
