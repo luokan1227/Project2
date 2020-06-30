@@ -347,7 +347,12 @@ The point plot shows the shares number of articles under each channel.
 
 ``` r
 #Create new variable channel, and make a sub data set contains channel info and shares.
-channel_sub <- dataTrain %>% mutate( channel = ifelse(data_channel_is_lifestyle == 1, "lifestyle", ifelse(data_channel_is_entertainment ==1, "entertainment", ifelse(data_channel_is_bus ==1, "bus", ifelse(data_channel_is_socmed ==1, "socmed", ifelse(data_channel_is_tech ==1, "tech", ifelse(data_channel_is_world ==1, "world", "NA"))))))) %>% select(channel, shares)
+channel_sub <- dataTrain %>% mutate( channel = ifelse(data_channel_is_lifestyle == 1, "lifestyle", 
+                                                      ifelse(data_channel_is_entertainment ==1, "entertainment", 
+                                                             ifelse(data_channel_is_bus ==1, "bus", 
+                                                                    ifelse(data_channel_is_socmed ==1, "socmed", 
+                                                                           ifelse(data_channel_is_tech ==1, "tech", 
+                                                                                  ifelse(data_channel_is_world ==1, "world", "NA"))))))) %>% select(channel, shares)
 #Make plot on counts of each channel numbers
 g1 <- ggplot(channel_sub, aes(x = channel))
 g1 + stat_count() + ggtitle("Number of articles on each channel")
@@ -368,7 +373,9 @@ g2 + geom_point(aes(fill = channel, colour = channel),position = "jitter") + ggt
 ### Random Forests
 
 Using random Forests method to do the non-linear fit, as this method has
-best performance in the reference paper.
+best performance in the reference paper. Using `train()` function from
+`caret` package, R will generate tuning parameters `mrty` and
+automatically select the optimal model.
 
 ``` r
 #Subset a smaller dataTrain dataset for fitting.
@@ -382,7 +389,7 @@ trctrl <- trainControl(method = "repeatedcv", number = 3, repeats = 1)
 #Fit a RF tree
 rf_fit<- train(log_shares ~ ., data=dataTrain, 
                 method = "rf", trControl = trctrl, 
-                preProcess = c("center", "scale"), tuneLength=3)
+                preProcess = c("center", "scale"), tuneLength=5)
 #check the fit
 rf_fit
 ```
@@ -398,12 +405,14 @@ rf_fit
     ## Resampling results across tuning parameters:
     ## 
     ##   mtry  RMSE       Rsquared   MAE      
-    ##    2    0.8957531  0.1468749  0.6680056
-    ##   26    0.8989838  0.1347501  0.6687519
-    ##   50    0.9022956  0.1296660  0.6714647
+    ##    2    0.8972513  0.1429696  0.6695292
+    ##   14    0.8970970  0.1376143  0.6666099
+    ##   26    0.8994541  0.1339101  0.6696040
+    ##   38    0.9004259  0.1322992  0.6702057
+    ##   50    0.9037594  0.1267860  0.6712881
     ## 
     ## RMSE was used to select the optimal model using the smallest value.
-    ## The final value used for the model was mtry = 2.
+    ## The final value used for the model was mtry = 14.
 
 ``` r
 #plot the fit
@@ -435,9 +444,9 @@ rf_miss <- unname(1-rf_match[[3]][1])
 rf_miss
 ```
 
-    ## [1] 0.3786893
+    ## [1] 0.3791896
 
-\#@\# Linear regression model
+### Linear regression model
 
 Create following linear regression models to compare:
 
@@ -457,19 +466,16 @@ Square, AIC, AICc, BIC comparsion.
 
 ``` r
 compareFitStats <- function(fit1, fit2, fit3){
-    require(MuMIn)
-    fitStats <- data.frame(fitStat = c("Adj R Square", "AIC", "AICc", "BIC"),
-        col1 = round(c(summary(fit1)$adj.r.squared, AIC(fit1), 
-                                    MuMIn::AICc(fit1), BIC(fit1)), 3),
-        col2 = round(c(summary(fit2)$adj.r.squared, AIC(fit2), 
-                                    MuMIn::AICc(fit2), BIC(fit2)), 3),
-            col3 = round(c(summary(fit3)$adj.r.squared, AIC(fit3), 
-                                    MuMIn::AICc(fit3), BIC(fit3)), 3))
-    #put names on returned df
-    calls <- as.list(match.call())
-    calls[[1]] <- NULL
-    names(fitStats)[2:4] <- unlist(calls)
-    fitStats
+  require(MuMIn)
+  fitStats <- data.frame(fitStat = c("Adj R Square", "AIC", "AICc", "BIC"), 
+                         col1 = round(c(summary(fit1)$adj.r.squared, AIC(fit1), MuMIn::AICc(fit1), BIC(fit1)), 3), 
+                         col2 = round(c(summary(fit2)$adj.r.squared, AIC(fit2), MuMIn::AICc(fit2), BIC(fit2)), 3), 
+                         col3 = round(c(summary(fit3)$adj.r.squared, AIC(fit3), MuMIn::AICc(fit3), BIC(fit3)), 3))
+  #put names on returned df
+  calls <- as.list(match.call())
+  calls[[1]] <- NULL
+  names(fitStats)[2:4] <- unlist(calls)
+  fitStats
 }
 
 compareFitStats(lin_fit1, lin_fit2, lin_fit3)
@@ -486,7 +492,7 @@ for each fit, and export a table to easy compare. Typically, we will
 prefer the fits which has larger Adj R Square, and smaller AIC, AICc AND
 BIC.
 
-In genweal, lin\_fit1 has higher Adj R Square values, will choose
+In general, lin\_fit1 has higher Adj R Square values, will choose
 lin\_fit1 to do the prediction.
 
 ``` r
@@ -503,7 +509,7 @@ lin_miss
 
 ### Compare model
 
-Put two miss-rates from two models together to compare
+Put two miss-rates from two models together to compare.
 
 ``` r
 table(rf_miss, lin_miss)
@@ -511,6 +517,10 @@ table(rf_miss, lin_miss)
 
     ##                    lin_miss
     ## rf_miss             0.400200100050025
-    ##   0.378689344672336                 1
+    ##   0.379189594797399                 1
 
-The lower missaccuracy rate is 0.3786893
+The lower missaccuracy rate is 0.3791896. Random Forests and linear
+regression models have very close missaccuracy rate if we made the
+problem into a binary classification (shares \< 1400 and \>= 1400). But
+in general, Random Forests took a much longer fitting time than linear
+regression.
