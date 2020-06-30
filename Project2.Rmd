@@ -30,7 +30,7 @@ ONP_raw <-  read_csv("OnlineNewsPopularity.csv")
 params$weekday
 ```
 
-The data set [**Online News Popularity**](https://archive.ics.uci.edu/ml/datasets/Online+News+Popularity) inlcudes the features of articles published by [Mashable](www.mashable.com) in two years. There are `r nrow(ONP_raw)` observations and `r ncol(ONP_raw)` variables in the dataset, without any missing values.  
+The data set [**Online News Popularity**](https://archive.ics.uci.edu/ml/datasets/Online+News+Popularity) inlcudes the features of articles published on Mashable in two years. There are `r nrow(ONP_raw)` observations and `r ncol(ONP_raw)` variables in the dataset, without any missing values.  
 
 
 There are:  
